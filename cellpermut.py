@@ -7,80 +7,93 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pylab as plt
 import glob
+import multiprocessing
 
 
-def get_cell_to_voisin(cell_id:int, radius:int, data_file:str) -> dict:
+def get_cell_to_voisin(p1, points, d_min, d_max):
     """ """
-
-    # load data
-    df = pd.read_csv(data_file)
-
-    # extract coordinates
-    df_cell = df[df['Object ID'] == cell_id]
-    x = list(df_cell['Centroid X µm'])[0]
-    y = list(df_cell['Centroid Y µm'])[0]
-
-    # look for neigboor
-    neigboor_to_count = {}
-    for index, row in df.iterrows():
-
-        x_candidate = row['Centroid X µm']
-        y_candidate = row['Centroid Y µm']
-        population = row['OmiqFilter']
-        cell_id_candidate = row['Object ID']
-
-        # check that cell distance is not computed with itself
-        if cell_id != cell_id_candidate:
-
-            # compute distance
+    neighbors = []
+    for p2 in points:
+        if p1 != p2:  # Ne pas comparer un point avec lui-même
+            x = float(p1.split("_")[0])
+            y = float(p1.split("_")[1])
+            x_candidate = float(p2.split("_")[0])
+            y_candidate = float(p2.split("_")[1])
             distance = math.sqrt((x - x_candidate)**2 + (y - y_candidate)**2)
-            if distance <= radius:
-                if population in neigboor_to_count:
-                    neigboor_to_count[population] +=1
-                else:
-                    neigboor_to_count[population] = 1
-
-    return neigboor_to_count
+            if distance <= radius_max and distance >= radius_min:
+                neighbors.append(p2)
+    return (p1, neighbors)
 
 
-def get_pop_to_voisin(population:str, radius:int, data_file:str)->dict:
+def read_cells_from_file(file_name):
     """ """
-    
-    # load data
-    df = pd.read_csv(data_file)
-    cell_list = list(df[df['OmiqFilter'] == population]['Object ID'])
+    points = []
+    df = pd.read_csv(file_name)
+    for index, row in df.iterrows():
+        x = row['Centroid X µm']
+        y = row['Centroid Y µm']
+        points.append(f"{x}_{y}")
+    return points
 
-    # compute voisinage
+
+def get_cell_to_voisin_multiproc(points, d_min, d_max):
+    with multiprocessing.Pool() as pool:
+        # On envoie la recherche des voisins de chaque point en parallèle
+        results = pool.starmap(get_cell_to_voisin, [(p1, points, d_min, d_max) for p1 in points])
+    
+    # Résultat sous forme de dictionnaire
+    cell_to_voisin = {p1: neighbors for p1, neighbors in results}
+    return cell_to_voisin
+
+
+def map_cells_to_pop(data_file):
+    """ """
+    cell_to_pop = {}
+    df = pd.read_csv(data_file)
+    for index, row in df.iterrows():
+        x = row['Centroid X µm']
+        y = row['Centroid Y µm']
+        population = row['OmiqFilter']
+        cell_id = f"{x}_{y}"
+        cell_to_pop[cell_id] = population
+
+    return cell_to_pop
+
+
+def get_pop_to_voisin(cell_to_voisin, cell_to_pop):
+    """ """
     pop_to_voisin = {}
-    for c in tqdm(cell_list):
-        cell_to_voisin = get_cell_to_voisin(c, radius, data_file)
-        for k in cell_to_voisin:
-            if k not in pop_to_voisin:
-                pop_to_voisin[k] = cell_to_voisin[k]
+    for c in cell_to_voisin:
+        p = cell_to_pop[c]
+        if p not in pop_to_voisin:
+            pop_to_voisin[p] = {}
+        for cv in cell_to_voisin[c]:
+            pv = cell_to_pop[cv]
+            if pv not in pop_to_voisin[p]:
+                pop_to_voisin[p][pv] = 1
             else:
-                pop_to_voisin[k] += cell_to_voisin[k]
-
+                pop_to_voisin[p][pv] +=1
     return pop_to_voisin
+
+
     
 
-def compute_proximity_matrix(radius, data_file):
+def compute_proximity_matrix(radius_min, radius_max, data_file):
     """ """
 
     # load data
-    df = pd.read_csv(data_file)
+    cell_list = read_cells_from_file(data_file)
+    
+    # compute distances
+    cell_to_voisin = get_cell_to_voisin_multiproc(cell_list, radius_min, radius_max)
+    cell_to_pop = map_cells_to_pop(data_file)
+    pop_to_voisin = get_pop_to_voisin(cell_to_voisin, cell_to_pop)
 
-    # extract pop list
-    pop_list = list(df['OmiqFilter'].unique())
-
-    # compute voisinage for each pop
-    pop_to_voisin = {}
-    for pop in pop_list:
-        pop_to_voisin[pop] = get_pop_to_voisin(pop, radius, data_file)
-
+    # return proximity matrix
     return pop_to_voisin 
 
 
-def compute_proximity_matrix_folder(folder, manifest, radius):
+def compute_proximity_matrix_folder(folder, manifest, radius_min, radius_max):
     """ """
 
     # ectract class
@@ -107,9 +120,7 @@ def compute_proximity_matrix_folder(folder, manifest, radius):
         file_list = class_to_file[c]
         dict_list = []
         for f in file_list:
-            pop_to_voisin = {}
-            for pop in pop_list:
-                pop_to_voisin[pop] = get_pop_to_voisin(pop, radius, f)
+            pop_to_voisin = compute_proximity_matrix(radius_min, radius_max, f)
             dict_list.append(pop_to_voisin)
 
         # assemble results
@@ -268,38 +279,39 @@ if __name__ == "__main__":
     # parameters
     population = "CD8"
     cell_id = 3421
-    radius = 10
+    radius_min = 5
+    radius_max = 10
     data_file = "data/Ca15-measurements.csv"
 
-    # # Generate & save matrix
-    # matrix = compute_proximity_matrix(radius, data_file)
-    # with open('matrix.pickle', 'wb') as handle:
-    #     pickle.dump(matrix, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # Generate & save matrix
+    matrix = compute_proximity_matrix(radius_min, radius_max, data_file)
+    with open('matrix.pickle', 'wb') as handle:
+        pickle.dump(matrix, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     # load & display matrix
-    # with open('matrix.pickle', 'rb') as handle:
-    #     pop_to_voisin = pickle.load(handle)
-    # print(pop_to_voisin)
-    # # display_proximity_matrix(pop_to_voisin)
+    with open('matrix.pickle', 'rb') as handle:
+        pop_to_voisin = pickle.load(handle)
 
-    # # display_voisin_bar(pop_to_voisin, 'Tconv')
+    # display_proximity_matrix(pop_to_voisin)
+    # display_voisin_bar(pop_to_voisin, 'Tconv')
     # display_voisin_pie(pop_to_voisin, 'Tconv')
 
-    # result = compute_proximity_matrix_folder("data", "data/Groupe.csv")
-    # with open('multi_matrix.pickle', 'wb') as handle:
-    #     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    result = compute_proximity_matrix_folder("data", "data/Groupe.csv", radius_min, radius_max)
+    with open('multi_matrix.pickle', 'wb') as handle:
+        pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-    with open('multi_matrix.pickle', 'rb') as handle:
-        machin = pickle.load(handle)
+    # with open('matrix.pickle', 'rb') as handle:
+    #     machin = pickle.load(handle)
 
-    for g in machin:
-        print(machin[g])
-        print("-"*32)
 
     # display_multiclass_bar(machin, 'Tconv')
-    display_class_matrix(machin, 'EP')
+    # display_class_matrix(machin, 'EP')
 
+
+
+
+    # Utilisation du multiprocessing pour trouver les points voisins
 
     
 
