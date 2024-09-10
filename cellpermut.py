@@ -10,7 +10,7 @@ import glob
 import multiprocessing
 
 
-def get_cell_to_voisin(p1, points, d_min, d_max):
+def get_cell_to_voisin(p1, points, radius_min, radius_max):
     """ """
     neighbors = []
     for p2 in points:
