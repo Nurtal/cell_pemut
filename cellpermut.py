@@ -174,6 +174,43 @@ def display_proximity_matrix(pop_to_voisin):
     )
     plt.title('Proximity Matrix (%)')
     plt.show()
+   
+
+def generate_proximity_matrix_heatmap(pop_to_voisin, fig_name):
+    """ """
+
+    # craft vector list
+    vector_list = []
+    vector_list_percentage = []
+    for k1 in pop_to_voisin:
+        vector = []
+        for k2 in pop_to_voisin:
+            if k2 in pop_to_voisin[k1]:
+                scalar = pop_to_voisin[k1][k2]
+            else:
+                scalar = 0
+            vector.append(scalar)
+        vector_list.append(vector)
+
+        # deal with percentages
+        total = sum(vector)
+        if total > 0:
+            percentages = [(value / total) * 100 for value in vector]
+        else:
+            percentages = [ 0 for value in vector]
+        vector_list_percentage.append(percentages)
+
+    # plot graph
+    ax = sns.heatmap(
+        vector_list_percentage,
+        linewidth=0.5,
+        annot=True,
+        xticklabels = list(pop_to_voisin.keys()),
+        yticklabels = list(pop_to_voisin.keys())
+    )
+    plt.title('Proximity Matrix (%)')
+    plt.savefig(fig_name)
+    plt.close()
 
 
 
