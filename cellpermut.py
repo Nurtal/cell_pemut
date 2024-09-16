@@ -62,20 +62,36 @@ def map_cells_to_pop(data_file):
 
 def get_pop_to_voisin(cell_to_voisin, cell_to_pop):
     """ """
+
+    all_pop_in_file = []
+    for pop in list(cell_to_pop.values()):
+        if pop not in all_pop_in_file:
+            all_pop_in_file.append(pop)
+
     pop_to_voisin = {}
+    for p1 in all_pop_in_file:
+        pop_to_voisin[p1] = {}
+        for p2 in all_pop_in_file:
+            pop_to_voisin[p1][p2] = 0
+    
     for c in cell_to_voisin:
         p = cell_to_pop[c]
-        if p not in pop_to_voisin:
-            pop_to_voisin[p] = {}
         for cv in cell_to_voisin[c]:
             pv = cell_to_pop[cv]
-            if pv not in pop_to_voisin[p]:
-                pop_to_voisin[p][pv] = 1
-            else:
-                pop_to_voisin[p][pv] +=1
+            pop_to_voisin[p][pv] += 1
     return pop_to_voisin
 
-
+def get_cellpop_list_from_folder(folder_file):
+    """ """
+    cell_pop_list = []
+    for tf in glob.glob(f"{folder_file}/*.csv"):
+        df = pd.read_csv(tf)
+        if 'OmiqFilter' in list(df.keys()):
+            pop_list = list(df['OmiqFilter'])
+            for pop in pop_list:
+                if pop not in cell_pop_list:
+                    cell_pop_list.append(pop)
+    return cell_pop_list
     
 
 def compute_proximity_matrix(radius_min, radius_max, data_file):
@@ -163,6 +179,7 @@ def display_proximity_matrix(pop_to_voisin):
         total = sum(vector)
         percentages = [(value / total) * 100 for value in vector]
         vector_list_percentage.append(percentages)
+        print(vector_list_percentage)
 
     # plot graph
     ax = sns.heatmap(
@@ -179,6 +196,8 @@ def display_proximity_matrix(pop_to_voisin):
 def generate_proximity_matrix_heatmap(pop_to_voisin, fig_name):
     """ """
 
+    import numpy as np
+
     # craft vector list
     vector_list = []
     vector_list_percentage = []
@@ -193,11 +212,17 @@ def generate_proximity_matrix_heatmap(pop_to_voisin, fig_name):
         vector_list.append(vector)
 
         # deal with percentages
-        total = sum(vector)
-        if total > 0:
-            percentages = [(value / total) * 100 for value in vector]
-        else:
-            percentages = [ 0 for value in vector]
+        total = 0
+        for s in vector:
+            if str(s) != 'nan':
+                total +=s
+        percentages = []
+        for v in vector:
+            if str(v) != 'nan':
+                p = v / total *100
+            else:
+                p = np.nan
+            percentages.append(p)
         vector_list_percentage.append(percentages)
 
     # plot graph
@@ -319,23 +344,35 @@ if __name__ == "__main__":
     radius_min = 5
     radius_max = 10
     data_file = "data/Ca15-measurements.csv"
+    folder_file = "data"
 
+
+    # cell_pop_list = get_cellpop_list_from_folder(folder_file)
+    
+
+    
     # Generate & save matrix
-    matrix = compute_proximity_matrix(radius_min, radius_max, data_file)
-    with open('matrix.pickle', 'wb') as handle:
-        pickle.dump(matrix, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # matrix = compute_proximity_matrix(radius_min, radius_max, data_file)
+    # with open('matrix.pickle', 'wb') as handle:
+    #     pickle.dump(matrix, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    # load & display matrix
-    with open('matrix.pickle', 'rb') as handle:
+    # # load & display matrix
+    with open('data/PD25-measurements_matrix.pickle', 'rb') as handle:
         pop_to_voisin = pickle.load(handle)
 
-    # display_proximity_matrix(pop_to_voisin)
-    # display_voisin_bar(pop_to_voisin, 'Tconv')
-    # display_voisin_pie(pop_to_voisin, 'Tconv')
+    for p in pop_to_voisin:
+        print(p)
+        print(pop_to_voisin[p])
+        print("-"*42)
+    generate_proximity_matrix_heatmap(pop_to_voisin, "test.png")
 
-    result = compute_proximity_matrix_folder("data", "data/Groupe.csv", radius_min, radius_max)
-    with open('multi_matrix.pickle', 'wb') as handle:
-        pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # display_proximity_matrix(pop_to_voisin)
+    # # display_voisin_bar(pop_to_voisin, 'Tconv')
+    # # display_voisin_pie(pop_to_voisin, 'Tconv')
+
+    # result = compute_proximity_matrix_folder("data", "data/Groupe.csv", radius_min, radius_max)
+    # with open('multi_matrix.pickle', 'wb') as handle:
+    #     pickle.dump(result, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
     # with open('matrix.pickle', 'rb') as handle:
