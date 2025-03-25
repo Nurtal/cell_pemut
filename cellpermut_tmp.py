@@ -1,5 +1,4 @@
 from matplotlib.cbook import _premultiplied_argb32_to_unmultiplied_rgba8888
-import os
 import pandas as pd
 import math
 import pickle
@@ -9,22 +8,10 @@ import seaborn as sns
 import matplotlib.pylab as plt
 import glob
 import multiprocessing
-import numpy as np
 
 
-def get_cell_to_voisin(p1:str, points:list, radius_min:int, radius_max:int):
-    """Get cell that are neigbour to cell p1 (i.e between radius min and radius max)
-
-    Args:
-        - p1 (str) : cell coordinate in the form {x}_{y}
-        - points (list) : list of cell coordinates
-        - radius_min (min) : min distance to be a voisin
-        - radius_max (int) : max distance to be a voisin
-        
-    Returns:
-        (tuple) : (p1, list_of_voisins)
-    
-    """
+def get_cell_to_voisin(p1, points, radius_min, radius_max):
+    """ """
     neighbors = []
     for p2 in points:
         if p1 != p2:  # Ne pas comparer un point avec lui-même
@@ -38,57 +25,11 @@ def get_cell_to_voisin(p1:str, points:list, radius_min:int, radius_max:int):
     return (p1, neighbors)
 
 
-
-def clean_dataset(df:pd.DataFrame) -> pd.DataFrame:
-    """Check and replace colnames for dataframe loaded from data files
-
-    Args:
-        - df (pd.DataFrame) : original dataframe
-
-    Returns:
-        - (pd.DataFrame) : cleaned dataframe
-    
-    """
-    
-    # params
-    x_col_name = 'Centroid X µm'
-    y_col_name = 'Centroid Y µm'
-
-    # try to get the right col name for x
-    target_list_x = ['Center X']
-    for target in target_list_x:
-        if target in list(df.keys()):
-            df = df.rename(columns={target:x_col_name})
-            
-    # try to get the right col name for y
-    target_list_y = ['Center Y']
-    for target in target_list_y:
-        if target in list(df.keys()):
-            df = df.rename(columns={target:y_col_name})
-
-    # return cleaned dataframe
-    return df
-
-
-def read_cells_from_file(file_name:str) -> list:
-    """Extract cells coordinates from data file
-
-    Args:
-        file_name (str) : path to the data file
-
-    Retruns:
-        (list) : list of cells define by the string {x}_{y}
-    
-    """
-
-    # load df
-    df = pd.read_csv(file_name)
-
-    # clean df
-    df = clean_dataset(df)
-
-    # extract points
+def read_cells_from_file(file_name):
+    """ """
     points = []
+    print(file_name)
+    df = pd.read_csv(file_name)
     for index, row in df.iterrows():
         x = row['Centroid X µm']
         y = row['Centroid Y µm']
@@ -110,7 +51,6 @@ def map_cells_to_pop(data_file):
     """ """
     cell_to_pop = {}
     df = pd.read_csv(data_file)
-    df = clean_dataset(df)
     for index, row in df.iterrows():
         x = row['Centroid X µm']
         y = row['Centroid Y µm']
@@ -121,20 +61,8 @@ def map_cells_to_pop(data_file):
     return cell_to_pop
 
 
-def get_pop_to_voisin(cell_to_voisin:dict, cell_to_pop:dict) -> dict:
-    """Compute population to voisin dict from cell_to_voisin (each cell to its neighboor) and cell to pop
-    (each cell to its pop). First count neigboors of diffrente pop (cell type) for each pop and then
-    normalize by the number of cell within the population (e.g, a population with a lot of cells will
-    have a lot of neigbours, so divide neigboors information by the number of cell in population)
-
-    Args:
-        - cell_to_voisin (dict) : keys are cell encoded by their coordinates and values are list of their neigboors (other cells)
-        - cell_to_pop (dict) : keys are cell encoded by their coordinates and values are associated cell pop
-
-    Returns:
-        - (dict) : keys are cell pop and values are dict with keys as cell pop and value as float
-    
-    """
+def get_pop_to_voisin(cell_to_voisin, cell_to_pop):
+    """ """
 
     all_pop_in_file = []
     for pop in list(cell_to_pop.values()):
@@ -156,6 +84,7 @@ def get_pop_to_voisin(cell_to_voisin:dict, cell_to_pop:dict) -> dict:
     # get normalized version
     pop_to_voisin = get_pop_to_voisin_norm(pop_to_voisin, cell_to_pop)
 
+    
     return pop_to_voisin
 
 
@@ -217,11 +146,6 @@ def compute_proximity_matrix(radius_min, radius_max, data_file):
 def compute_proximity_matrix_folder(folder, manifest, radius_min, radius_max):
     """ """
 
-    # define folder separator
-    folder_separator = "/"
-    if os.name == 'nt':
-        folder_separator = "\\"
-
     # ectract class
     class_to_file = {}
     df = pd.read_csv(manifest)
@@ -229,7 +153,7 @@ def compute_proximity_matrix_folder(folder, manifest, radius_min, radius_max):
         
         file_path = None
         for sf in glob.glob(f"{folder}/*.csv"):
-            if row['file'] == sf.split(folder_separator)[1]:
+            if row['file'] == sf.split("\\")[1]:
                 file_path = sf
                
                 if row['Groupe'] not in class_to_file:
@@ -239,6 +163,8 @@ def compute_proximity_matrix_folder(folder, manifest, radius_min, radius_max):
                     #class_to_file[row['Groupe']].append(f"{folder}/{row['file']}")
                     class_to_file[row['Groupe']].append(file_path)
               
+    print(class_to_file)
+
     # extract pop list
     pop_list = []
     for tf in glob.glob(f"{folder}/*.csv"):
@@ -254,6 +180,7 @@ def compute_proximity_matrix_folder(folder, manifest, radius_min, radius_max):
         file_list = class_to_file[c]
         dict_list = []
         for f in file_list:
+            print(f)
             pop_to_voisin = compute_proximity_matrix(radius_min, radius_max, f)
             dict_list.append(pop_to_voisin)
 
@@ -297,6 +224,7 @@ def display_proximity_matrix(pop_to_voisin):
         total = sum(vector)
         percentages = [(value / total) * 100 for value in vector]
         vector_list_percentage.append(percentages)
+        print(vector_list_percentage)
 
     # plot graph
     ax = sns.heatmap(
@@ -312,7 +240,9 @@ def display_proximity_matrix(pop_to_voisin):
 
 def generate_proximity_matrix_heatmap(pop_to_voisin, fig_name):
     """ """
-    
+
+    import numpy as np
+
     # craft vector list
     vector_list = []
     vector_list_percentage = []
@@ -342,7 +272,7 @@ def generate_proximity_matrix_heatmap(pop_to_voisin, fig_name):
             percentages.append(p)
         vector_list_percentage.append(percentages)
 
-    # plot graph with annotation
+    # plot graph
     ax = sns.heatmap(
         vector_list_percentage,
         linewidth=0.5,
@@ -352,18 +282,6 @@ def generate_proximity_matrix_heatmap(pop_to_voisin, fig_name):
     )
     plt.title('Proximity Matrix (%)')
     plt.savefig(fig_name)
-    plt.close()
-    
-    # plot graph without annotation
-    ax = sns.heatmap(
-        vector_list_percentage,
-        linewidth=0.5,
-        annot=False,
-        xticklabels = list(pop_to_voisin.keys()),
-        yticklabels = list(pop_to_voisin.keys())
-    )
-    plt.title('Proximity Matrix (%)')
-    plt.savefig(fig_name.replace('.png', '_without_annotation.png'))
     plt.close()
 
 
@@ -380,12 +298,6 @@ def display_voisin_bar(pop_to_voisins, pop):
     data_percentage = {}
     for k in data:
         data_percentage[k] = (data[k] / total)*100
-
-    # save
-    plt.barh(data_percentage.keys(), data_percentage.values())
-    plt.title(f"Voisinage de {pop}")
-    plt.savefig("figures/barplot_voisin.png")
-    plt.close()
       
     # display
     plt.barh(data_percentage.keys(), data_percentage.values())
@@ -405,18 +317,14 @@ def display_voisin_pie(pop_to_voisins, pop):
     labels = data.keys()
     sizes = data.values()
 
-    # save
-    plt.figure(figsize=(6, 6))  # Optional: Adjust the figure size
-    plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
-    plt.axis('equal')
-    plt.title(f"Voisinage de {pop}")
-    plt.savefig("figures/piechart_voisin.png")
-    plt.close()
-
     # Plotting the pie chart
     plt.figure(figsize=(6, 6))  # Optional: Adjust the figure size
     plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+
+    # Equal aspect ratio ensures that pie is drawn as a circle
     plt.axis('equal')
+
+    # Display the pie chart
     plt.title(f"Voisinage de {pop}")
     plt.show()
 
@@ -457,21 +365,14 @@ def display_multiclass_bar(group_to_voisin, population_title):
         values = list(series.values())
         plt.bar(index + i * bar_width, values, bar_width, label=group_list[i])
 
-    # save
+    # Ajout des étiquettes et du titre
     plt.xlabel('Populations')
     plt.ylabel('Valeurs (%)')
     plt.title(f"Voisins de la population {population_title} (valeurs en %)")
     plt.xticks(index + bar_width, categories, rotation=90)
     plt.legend()
-    plt.savefig("figures/multiclass_barplot.png")
-    plt.close()
-    
-    # Display
-    plt.xlabel('Populations')
-    plt.ylabel('Valeurs (%)')
-    plt.title(f"Voisins de la population {population_title} (valeurs en %)")
-    plt.xticks(index + bar_width, categories, rotation=90)
-    plt.legend()
+
+    # Affichage du graphique
     plt.show()
 
 
@@ -489,13 +390,12 @@ if __name__ == "__main__":
     cell_id = 3421
     radius_min = 5
     radius_max = 10
-    data_file = "data/1001_004_M0.csv"
+    data_file = "data/Ca15-measurements.csv"
     folder_file = "data"
-
-    read_cells_from_file(data_file)
 
 
     # cell_pop_list = get_cellpop_list_from_folder(folder_file)
+    
 
     
     # Generate & save matrix
@@ -504,14 +404,14 @@ if __name__ == "__main__":
     #     pickle.dump(matrix, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     # # load & display matrix
-    # with open('data/PD25-measurements_matrix.pickle', 'rb') as handle:
-    #     pop_to_voisin = pickle.load(handle)
+    with open('data/PD25-measurements_matrix.pickle', 'rb') as handle:
+        pop_to_voisin = pickle.load(handle)
 
-    # for p in pop_to_voisin:
-    #     print(p)
-    #     print(pop_to_voisin[p])
-    #     print("-"*42)
-    # generate_proximity_matrix_heatmap(pop_to_voisin, "test.png")
+    for p in pop_to_voisin:
+        print(p)
+        print(pop_to_voisin[p])
+        print("-"*42)
+    generate_proximity_matrix_heatmap(pop_to_voisin, "test.png")
 
     # display_proximity_matrix(pop_to_voisin)
     # # display_voisin_bar(pop_to_voisin, 'Tconv')
